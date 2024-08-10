@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# Check if the script is run as root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script must be run as root."
+    exit 1
+fi
+
+# Get the absolute path of this script
+script_path=$(realpath "$0")
+
+# Get the parent directory of this script
+parent_dir=$(dirname "$script_path")
+
+# Parent directory in which backups are saved
+output_parent_dir="/backups"
+
+# Load exclusions from the backup_exclusions file if it exists
+exclude_file="$parent_dir/zalohuj_okrem"
+if [ -f "$exclude_file" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        exclusions+=("--exclude=$line")
+    done < "$exclude_file"
+fi
+
+# Display file content for user
+echo "Following exclusions will be applied for the backup:"
+cat "$exclude_file"
+
+prompt_yes_no() {
+    while true; do
+        read -p "You can change them in file \"$exclude_file\". The backup output directory \"$output_parent_dir\" will be excluded automatically. Do you want to continue? (y/n): " response
+        case "$response" in
+            [Yy]* )
+                echo "Continuing..."
+                return 0  # Return success and continue
+                ;;
+            [Nn]* )
+                echo "Exiting the script."
+                exit 1  # Exit with failure status
+                ;;
+            * )
+                echo "Please answer with 'y' or 'n'."
+                ;;
+        esac
+    done
+}
+
+# Call the prompt function
+prompt_yes_no
+
+# Ensure the parent directory for backups exists
+mkdir -p "$output_parent_dir"
+
+# Get the current date and time in the format "YYYY-MM-DD_HHMM_SS"
+current_datetime=$(date +"%Y-%m-%d_%H%M_%S")
+
+# Complete path to the backup destination directory
+backup_destination="$output_parent_dir/$current_datetime"
+
+# Ensure the backup directory exists
+mkdir -p "$backup_destination"
+
+# Create file with the list of installed packages and crontab and save it to the backup
+dpkg --get-selections > "$backup_destination"/dpkg_list_snapshot
+crontab -l > "$backup_destination"/root_crontab_snapshot
+
+for item in $(ls -A /); do
+
+    item="/$item"
+
+    skip_item=false
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [ "$item" = "$line" ]; then
+            skip_item=true
+            break
+        fi
+    done < "$exclude_file"
+
+    # Create archives (backups) only if item is not excluded and also ignore output directory with backups
+    if [ "$skip_item" = false ] && [ "$output_parent_dir" != "$item" ]; then
+        # Determine the archive name
+        archive_name="${item}.tar.gz"
+        
+        # Create the tar.gz archive
+        tar -czf "$backup_destination/${archive_name}" "${exclusions[@]}" "$item"
+    fi
+
+done
+
+echo "Backup completed! Latest backup is stored in \"$backup_destination\""
