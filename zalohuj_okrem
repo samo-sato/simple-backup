@@ -46,3 +46,4 @@
 /root/.local/share/Trash
 /root/.cache
 /home/.ecryptfs
+/swapfile
