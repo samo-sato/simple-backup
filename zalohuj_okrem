@@ -29,7 +29,6 @@
 /var/lib
 /var/local
 /var/lock
-/var/log
 /var/metrics
 /var/NX
 /var/opt
